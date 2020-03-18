@@ -3,16 +3,14 @@ package bptree
 
 import (
 	"errors"
-	"fmt"
-	"io"
 	"unsafe"
 )
 
 const (
-	// KeyMin is at present the minimum key in the B+ tree.
+	// KeyMin is the minimum key in a B+ tree at present.
 	KeyMin = keyMinMax(-1)
 
-	// KeyMax is at present the maximum key in the B+ tree.
+	// KeyMax is the maximum key in a B+ tree at present.
 	KeyMax = keyMinMax(1)
 )
 
@@ -138,11 +136,6 @@ func (bpt *BPTree) SearchForward(maxKey, minKey interface{}) Iterator {
 func (bpt *BPTree) SearchBackward(maxKey, minKey interface{}) Iterator {
 	minLeaf, minRecordIndex, maxLeaf, maxRecordIndex, ok := bpt.findAndLocateRecords(maxKey, minKey)
 	return new(backwardIterator).Init(maxLeaf, maxRecordIndex, minLeaf, minRecordIndex, !ok)
-}
-
-// Fprint dumps the B+ tree as plain text for debugging purposes.
-func (bpt *BPTree) Fprint(writer io.Writer) error {
-	return bpt.doFprint(writer, bpt.root, 1, "", "\n")
 }
 
 // IsEmpty indicates whether the B+ tree is empty.
@@ -439,59 +432,6 @@ func (bpt *BPTree) findAndLocateRecords(minKey interface{}, maxKey interface{}) 
 	}
 
 	return minLeaf, minRecordIndex, maxLeaf, maxRecordIndex, true
-}
-
-func (bpt *BPTree) doFprint(writer io.Writer, node unsafe.Pointer, nodeDepth int, prefix, newLine string) error {
-	if nodeDepth == bpt.height {
-		leaf := (*leaf)(node)
-
-		for i, record := range leaf.Records {
-			var err error
-
-			switch i {
-			case 0:
-				if len(leaf.Records) == 1 {
-					_, err = fmt.Fprintf(writer, "%s──● %v", prefix, record)
-				} else {
-					_, err = fmt.Fprintf(writer, "%s┬─● %v", prefix, record)
-				}
-			case len(leaf.Records) - 1:
-				_, err = fmt.Fprintf(writer, "%s└─● %v", newLine, record)
-			default:
-				_, err = fmt.Fprintf(writer, "%s├─● %v", newLine, record)
-			}
-
-			if err != nil {
-				return err
-			}
-		}
-	} else {
-		nonLeaf := (*nonLeaf)(node)
-
-		if err := bpt.doFprint(writer, nonLeaf.Children[0].Value, nodeDepth+1, prefix+"┬─", newLine+"│ "); err != nil {
-			return err
-		}
-
-		for i, nodeChild := range nonLeaf.Children[1:] {
-			if _, err := fmt.Fprintf(writer, "%s├─● %v", newLine, nodeChild.Key); err != nil {
-				return err
-			}
-
-			var prefix2, newLine2 string
-
-			if i == len(nonLeaf.Children[1:])-1 {
-				prefix2, newLine2 = "└─", "  "
-			} else {
-				prefix2, newLine2 = "├─", "│ "
-			}
-
-			if err := bpt.doFprint(writer, nodeChild.Value, nodeDepth+1, newLine+prefix2, newLine+newLine2); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
 }
 
 // KeyComparer compares two keys and returns an integer
