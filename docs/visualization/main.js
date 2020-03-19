@@ -255,6 +255,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (key.toFixed(0) == key.toString()) {
                     e.value = key+1;
                 }
+            } else {
+                alert("key `"+key.toString()+"` already exists in the B+ tree");
             }
         });
 
@@ -266,7 +268,9 @@ document.addEventListener("DOMContentLoaded", () => {
                 return
             }
 
-            doOp(-key);
+            if (!doOp(-key)) {
+                alert("key `"+key.toString()+"` doesn't exist in the B+ tree");
+            }
         });
 
         document.getElementById("btnUndo").addEventListener("click", () => {
