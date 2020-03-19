@@ -1,0 +1,45 @@
+<html>
+  <head>
+    <meta charset="utf-8"/>
+    <script src="pako_inflate.min.js"></script>
+    <script src="wasm_exec.js"></script>
+    <script src="viz.js"></script>
+    <script src="main.js"></script>
+    <title>Yet Another B+ Tree Visualization</title>
+  </head>
+  <body>
+    <div id="container">
+      <div id="header">
+        <h1>Yet Another B+ Tree Visualization</h1>
+        <!-- Place this tag where you want the button to render. -->
+        <a class="github-button" href="https://github.com/roy2220/bptree" data-size="large" aria-label="Star roy2220/bptree on GitHub">Star</a>
+        <hr/>
+        <p>
+          <b>maximum degree:</b>
+          <input name="maxDegree" value="4" type="radio">4</input>
+          <input name="maxDegree" value="5" type="radio">5</input>
+          <input name="maxDegree" value="6" type="radio">6</input>
+          <input name="maxDegree" value="7" type="radio">7</input>
+          <input name="maxDegree" value="8" type="radio">8</input>
+          <input name="maxDegree" value="9" type="radio">9</input>
+          <input name="maxDegree" value="10" type="radio">10</input>
+        </p>
+        <p>
+          <b>key:</b>
+          <input name="key" value="1" type="number"></input>
+          <button id="btnAddKey"><b>✚ Add key</b></button>
+          <button id="btnDeleteKey"><b>✖ Delete key</b></button>
+        </p>
+        <p>
+          <button id="btnUndo"><b>◀ Undo</b></button>
+          <button id="btnRedo"><b>▶ Redo</b></button>
+        </p>
+      </div>
+      <div id="content">
+        <div id="svg"></div>
+      </div>
+    </div>
+  <!-- Place this tag in your head or just before your close body tag. -->
+  <script async defer src="https://buttons.github.io/buttons.js"></script>
+  </body>
+</html>
