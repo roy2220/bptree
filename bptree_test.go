@@ -69,6 +69,26 @@ func TestBPTreeDeleteRecord(t *testing.T) {
 	bpt := MakeBPTree(t, 5)
 	l, h := 0, len(Keywords)-1
 
+	for l < len(Keywords)/8 {
+		j := SortedKeywordIndexes[l]
+		l++
+		k := Keywords[j]
+		j2, ok := bpt.DeleteRecord(k)
+		if assert.True(t, ok) {
+			assert.Equal(t, j, j2)
+		}
+	}
+
+	for h > len(Keywords)/8*7 {
+		j := SortedKeywordIndexes[h]
+		h--
+		k := Keywords[j]
+		j2, ok := bpt.DeleteRecord(k)
+		if assert.True(t, ok) {
+			assert.Equal(t, j, j2)
+		}
+	}
+
 	for h-l+1 > len(Keywords)/2 {
 		v, ok := bpt.DeleteRecord(bptree.KeyMin)
 

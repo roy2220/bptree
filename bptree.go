@@ -26,7 +26,7 @@ type BPTree struct {
 // Init initializes the B+ tree with the given maximum degree
 // and key comparer and returns it.
 func (bpt *BPTree) Init(maxDegree int, keyComparer KeyComparer) *BPTree {
-	if maxDegree < 3 {
+	if maxDegree < 4 {
 		panic(errors.New("bptree: invalid maximum degree"))
 	}
 
@@ -248,7 +248,7 @@ func (bpt *BPTree) trySplitNonLeaf(recordPath *recordPath, i *int) {
 	nonLeafChildIndex := (*recordPath)[*i].NodeChildIndex()
 
 	if nonLeaf.Children.IsFull(bpt.maxDegree) {
-		numberOfNonLeafChildren := (bpt.maxDegree - 1) / 2
+		numberOfNonLeafChildren := 1 + (bpt.maxDegree-1)/2
 
 		if *i == 0 {
 			bpt.increaseHeight()
@@ -696,7 +696,7 @@ func (nc *nodeChildren) Truncate(length int) {
 }
 
 func (nc nodeChildren) IsSparse(maxDegree int) bool {
-	return len(nc)*2 <= maxDegree-1
+	return len(nc)*2 <= maxDegree
 }
 
 func (nc nodeChildren) IsFull(maxDegree int) bool {

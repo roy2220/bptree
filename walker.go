@@ -64,7 +64,7 @@ type nonLeafAccessor struct {
 }
 
 func (nli *nonLeafAccessor) IsLeaf() bool {
-	return true
+	return false
 }
 
 func (nli *nonLeafAccessor) NumberOfKeys() int {
