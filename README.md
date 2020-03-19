@@ -4,6 +4,10 @@
 
 An implementation of in-memory B+ tree in pure Go
 
+## Visualization
+
+Test a B+ Tree online: https://roy2220.github.io/bptree/visualization
+
 ## Example
 
 ```go
