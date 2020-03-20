@@ -550,7 +550,7 @@ func (bpt *BPTree) findAndLocateRecords(minKey interface{}, maxKey interface{}) 
 // KeyComparer compares two keys and returns an integer
 // with a value < 0 means the key 1 is less than the key 2,
 // with a value == 0 means the key 1 is equal to the key 2,
-// with a value > 0 means the key 1 is greater to the key 2.
+// with a value > 0 means the key 1 is greater than the key 2.
 type KeyComparer func(key1, key2 interface{}) (delta int64)
 
 type keyMinMax int

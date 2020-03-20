@@ -16,16 +16,16 @@ function loadBPTreeModule(callback) {
     });
 }
 
-function updateSvg() {
+function updateSvg(newKey) {
         const svg = document.getElementById("svg");
         const arrayTree = eval(BPTree.dump());
-        const dotScript = generateDotScript(arrayTree);
+        const dotScript = generateDotScript(arrayTree, newKey);
         // console.log(dotScript);
         const html = Viz(dotScript, "svg");
         svg.innerHTML = html.replace(/(\<svg width=")[^"]+/i, "$1100%");
 }
 
-function generateDotScript(arrayTree) {
+function generateDotScript(arrayTree, newKey) {
     let nodePathsOfLevels = [];
     let prevLeafPath = ""
     var f;
@@ -70,7 +70,14 @@ function generateDotScript(arrayTree) {
                 line += "<c" + childIndex.toString() + ">|"
                 childIndex++
             } else {
-                line += x.toString() + "|"
+                console.log(x, newKey);
+                if (nodeIsLeaf && x == newKey) {
+                    lines.push("  new_key [label = \"new key\", shape = plaintext]");
+                    lines.push("  new_key -> " + nodePath + ":nk");
+                    line += "<nk>" + x.toString() + "|";
+                } else {
+                    line += x.toString() + "|";
+                }
             }
         }
 
@@ -128,23 +135,26 @@ function loadOpHistory() {
         curMaxDegree = parseFloat(a[0]);
         BPTree.init(curMaxDegree);
         document.querySelector("input[name=\"maxDegree\"][value=\""+curMaxDegree.toString()+"\"]").checked = true;
+        let newKey = null;
 
         for (let t of a.slice(1)) {
             const op = parseFloat(t);
 
             if (op < 0) {
                 const key = -op;
-                BPTree.deleteKey(key)
+                BPTree.deleteKey(key);
+                newKey = null;
             } else {
                 const key = op;
-                BPTree.addKey(key)
+                BPTree.addKey(key);
+                newKey = key;
             }
 
             opStack[opStackHeight] = op;
             opStackHeight++;
         }
 
-        updateSvg();
+        updateSvg(newKey);
         const maxKey = BPTree.findMax();
 
         if (maxKey != null) {
@@ -156,7 +166,7 @@ function loadOpHistory() {
 function resetOpHistory(maxDegree) {
     BPTree.init(maxDegree);
     curMaxDegree = maxDegree;
-    updateSvg();
+    updateSvg(null);
     opStack.length = 0;
     opStackHeight = 0;
     document.location.hash = "#" + maxDegree.toString();
@@ -170,6 +180,8 @@ function resetOpHistory(maxDegree) {
 }
 
 function doOp(op) {
+    var newKey;
+
     if (op < 0) {
         const key = -op;
 
@@ -182,9 +194,11 @@ function doOp(op) {
         if (!BPTree.addKey(key)) {
             return false
         }
+
+        newKey = op;
     }
 
-    updateSvg();
+    updateSvg(newKey);
 
     if (opStack.length > opStackHeight) {
         opStack.length = opStackHeight;
@@ -207,18 +221,21 @@ function undoOp() {
     const s = "," + (op>0?"+":"") + op.toString();
     document.location.hash = document.location.hash.substring(0, document.location.hash.length - s.length);
     BPTree.init(curMaxDegree);
+    let newKey = null;
 
     for (let op of opStack.slice(0, opStackHeight)) {
         if (op < 0) {
             const key = -op;
             BPTree.deleteKey(key);
+            newKey = null;
         } else {
             const key = op;
             BPTree.addKey(key);
+            newKey = key;
         }
     }
 
-    updateSvg();
+    updateSvg(newKey);
 }
 
 function redoOp() {
@@ -228,16 +245,19 @@ function redoOp() {
 
     opStackHeight++;
     const op = opStack[opStackHeight-1];
+    var newKey;
 
     if (op < 0) {
         const key = -op;
         BPTree.deleteKey(key);
+        newKey = null;
     } else {
         const key = op;
         BPTree.addKey(key);
+        newKey = key;
     }
 
-    updateSvg();
+    updateSvg(newKey);
     const s = "," + (op>0?"+":"") + op.toString();
     document.location.hash += s;
 }
@@ -249,7 +269,7 @@ function setRandomNewKey() {
     for (const nn of [10, 100, 1000]) {
         const maxKey = BPTree.findMax();
 
-        if (maxKey != null && maxKey >= nn) {
+        if (maxKey != null && maxKey > nn) {
             continue;
         }
 
