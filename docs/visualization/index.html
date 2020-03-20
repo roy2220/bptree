@@ -14,6 +14,11 @@
         <!-- Place this tag where you want the button to render. -->
         <a class="github-button" href="https://github.com/roy2220/bptree" data-size="large" aria-label="Star roy2220/bptree on GitHub">Star</a>
         <hr/>
+      </div>
+      <div id="content-loading">
+        <h3>Loading...</h3>
+      </div>
+      <div id="content" hidden="hidden">
         <p>
           <b>maximum degree:</b>
           <input name="maxDegree" value="4" type="radio">4</input>
@@ -27,18 +32,17 @@
         <p>
           <b>key:</b>
           <input name="key" value="1" type="number"></input>
-          <button id="btnAddKey"><b>✚ Add key</b></button>
-          <button id="btnDeleteKey"><b>✖ Delete key</b></button>
+          <input name="random-new-key" type="checkbox">random new key</input>
         </p>
         <p>
-          <button id="btnUndo"><b>◀ Undo</b></button>
-          <button id="btnRedo"><b>▶ Redo</b></button>
+          <button id="add-key"><b>✚ Add key</b></button>
+          <button id="delete-key"><b>✖ Delete key</b></button>
+          <button id="undo"><b>◀ Undo</b></button>
+          <button id="redo"><b>▶ Redo</b></button>
+          <button id="reset"><b>↩ Rest</b></button>
         </p>
-      </div>
-      <div id="content">
-        <div id="svg">
-            <h3>Loading...</h3>
-        </div>
+        <p id="tips" style="color:red;"></p>
+        <div id="svg"></div>
       </div>
     </div>
   <!-- Place this tag in your head or just before your close body tag. -->

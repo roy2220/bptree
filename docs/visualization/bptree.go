@@ -41,6 +41,21 @@ func BPTree_DeleteKey(_ js.Value, args []js.Value) interface{} {
 	return ok
 }
 
+func BPTree_HasKey(_ js.Value, args []js.Value) interface{} {
+	key := args[0].Float()
+	_, ok := bpTree.HasRecord(key)
+	return ok
+}
+
+func BPTree_FindMax(_ js.Value, _ []js.Value) interface{} {
+	if it := bpTree.SearchBackward(bptree.KeyMax, bptree.KeyMax); !it.IsAtEnd() {
+		key, _ := it.Record()
+		return key
+	}
+
+	return nil
+}
+
 func BPTree_Dump(_ js.Value, _ []js.Value) interface{} {
 	buffer := bytes.NewBuffer(nil)
 	bpTree.Walk(makeBPTreeDumper(buffer))
@@ -96,6 +111,8 @@ func main() {
 	module.Set("init", js.FuncOf(BPTree_Init))
 	module.Set("addKey", js.FuncOf(BPTree_AddKey))
 	module.Set("deleteKey", js.FuncOf(BPTree_DeleteKey))
+	module.Set("hasKey", js.FuncOf(BPTree_HasKey))
+	module.Set("findMax", js.FuncOf(BPTree_FindMax))
 	module.Set("dump", js.FuncOf(BPTree_Dump))
 	module.Set("string", js.FuncOf(BPTree_String))
 	select {}

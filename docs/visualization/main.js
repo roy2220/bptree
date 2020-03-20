@@ -145,6 +145,11 @@ function loadOpHistory() {
         }
 
         updateSvg();
+        const maxKey = BPTree.findMax();
+
+        if (maxKey != null) {
+            document.querySelector("input[name=\"key\"]").value = (maxKey+1).toFixed(0);
+        }
     }
 }
 
@@ -156,7 +161,12 @@ function resetOpHistory(maxDegree) {
     opStackHeight = 0;
     document.location.hash = "#" + maxDegree.toString();
     document.querySelector("input[name=\"maxDegree\"][value=\""+maxDegree.toString()+"\"]").checked = true;
-    document.querySelector("input[name=\"key\"]").value = 1;
+
+    if (document.querySelector("input[name=\"random-new-key\"]").checked) {
+        setRandomNewKey();
+    } else {
+        document.querySelector("input[name=\"key\"]").value = 1;
+    }
 }
 
 function doOp(op) {
@@ -232,6 +242,30 @@ function redoOp() {
     document.location.hash += s;
 }
 
+function setRandomNewKey() {
+    let s = [];
+    let n = 1;
+
+    for (const nn of [10, 100, 1000]) {
+        const maxKey = BPTree.findMax();
+
+        if (maxKey != null && maxKey >= nn) {
+            continue;
+        }
+
+        for (; n <= nn; n++) {
+            if (!BPTree.hasKey(n)) {
+                s.push(n);
+            }
+        }
+
+        if (s.length >= 1) {
+            document.querySelector("input[name=\"key\"]").value = s[Math.floor(s.length*Math.random())];
+            return
+        }
+    }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
     loadBPTreeModule(() => {
         for (let e of document.querySelectorAll("input[name=\"maxDegree\"]")) {
@@ -243,45 +277,70 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         }
 
-        document.getElementById("btnAddKey").addEventListener("click", () => {
-            const e = document.querySelector("input[name=\"key\"]")
-            const key = parseFloat(e.value);
-
-            if (key <= 0) {
-                return;
-            }
-
-            if (doOp(key)) {
-                if (key.toFixed(0) == key.toString()) {
-                    e.value = key+1;
-                }
-            } else {
-                alert("key `"+key.toString()+"` already exists in the B+ tree");
+        document.querySelector("input[name=\"random-new-key\"]").addEventListener("click", () => {
+            if (document.querySelector("input[name=\"random-new-key\"]").checked) {
+                setRandomNewKey();
             }
         });
 
-        document.getElementById("btnDeleteKey").addEventListener("click", () => {
+        const tips = document.getElementById("tips");
+
+        document.getElementById("add-key").addEventListener("click", () => {
             const e = document.querySelector("input[name=\"key\"]")
             const key = parseFloat(e.value);
 
             if (key <= 0) {
+                tips.textContent = "keys must be positive numbers";
+                return;
+            }
+
+            if (!doOp(key)) {
+                tips.textContent = "key `"+key.toString()+"` already exists";
+                return;
+            }
+
+            tips.textContent = "";
+
+            if (document.querySelector("input[name=\"random-new-key\"]").checked) {
+                setRandomNewKey();
+            } else {
+                const maxKey = BPTree.findMax();
+                document.querySelector("input[name=\"key\"]").value = (maxKey+1).toFixed(0);
+            }
+        });
+
+        document.getElementById("delete-key").addEventListener("click", () => {
+            const e = document.querySelector("input[name=\"key\"]")
+            const key = parseFloat(e.value);
+
+            if (key <= 0) {
+                tips.textContent = "keys must be positive numbers";
                 return
             }
 
             if (!doOp(-key)) {
-                alert("key `"+key.toString()+"` doesn't exist in the B+ tree");
+                tips.textContent = "key `"+key.toString()+"` doesn't exist";
+                return
             }
+
+            tips.textContent = "";
         });
 
-        document.getElementById("btnUndo").addEventListener("click", () => {
+        document.getElementById("undo").addEventListener("click", () => {
             undoOp();
         });
 
-        document.getElementById("btnRedo").addEventListener("click", () => {
+        document.getElementById("redo").addEventListener("click", () => {
             redoOp();
         });
 
+        document.getElementById("reset").addEventListener("click", () => {
+            resetOpHistory(curMaxDegree);
+        });
+
         loadOpHistory();
+        document.getElementById("content-loading").hidden = true;
+        document.getElementById("content").hidden = false;
     });
 }, false);
 
