@@ -13,6 +13,33 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+type BPTreeValidator struct {
+	T         *testing.T
+	MaxDegree int
+}
+
+func (v BPTreeValidator) Validate(nodeAccessor bptree.NodeAccessor) (_ error) {
+	n := nodeAccessor.NumberOfKeys()
+
+	if !nodeAccessor.IsLeaf() {
+		n++
+	}
+
+	if !assert.True(v.T, n <= v.MaxDegree, "%v", n) {
+		v.T.FailNow()
+	}
+
+	if !assert.True(v.T, n >= v.MaxDegree/2, "%v", n) {
+		v.T.FailNow()
+	}
+
+	for i := 0; i < n; i++ {
+		nodeAccessor.AccessChild(v.Validate, i)
+	}
+
+	return
+}
+
 var Keywords []string
 var SortedKeywordIndexes []int
 var SortedKeywordRIndexes []int
@@ -351,6 +378,7 @@ func MakeBPTree(t *testing.T, maxDegree int) *bptree.BPTree {
 		// t.Logf("after add: %v\n%s", k, b.String())
 	}
 
+	bpt.Walk(BPTreeValidator{t, bpt.MaxDegree()}.Validate)
 	t.Logf("b+ tree height: %d", bpt.Height())
 	return bpt
 }

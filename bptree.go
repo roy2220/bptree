@@ -282,15 +282,8 @@ func (bpt *BPTree) ensureNotFullNonLeaf(recordPath *recordPath, i int) int {
 	if nonLeafIndex < len(nonLeafParent.Children())-1 {
 		nonLeafRightSibling := (*nonLeaf)(nonLeafParent.Children()[nonLeafIndex+1].Value)
 
-		if !nonLeafRightSibling.IsFull(bpt.maxDegree) {
+		if !nonLeafRightSibling.IsFull(bpt.maxDegree) && nonLeafChildIndex < len(nonLeaf1.Children())-1 {
 			nonLeaf1.ShiftToRight(nonLeafParent, nonLeafIndex, nonLeafRightSibling)
-
-			if nonLeafChildIndex == len(nonLeaf1.Children()) {
-				(*recordPath)[i].SetNonLeaf(nonLeafRightSibling)
-				(*recordPath)[i].SetNodeChildIndex(0)
-				(*recordPath)[i-1].SetNodeChildIndex(nonLeafIndex + 1)
-			}
-
 			return i
 		}
 	}
@@ -298,17 +291,9 @@ func (bpt *BPTree) ensureNotFullNonLeaf(recordPath *recordPath, i int) int {
 	if nonLeafIndex >= 1 {
 		nonLeafLeftSibling := (*nonLeaf)(nonLeafParent.Children()[nonLeafIndex-1].Value)
 
-		if !nonLeafLeftSibling.IsFull(bpt.maxDegree) {
+		if !nonLeafLeftSibling.IsFull(bpt.maxDegree) && nonLeafChildIndex >= 1 {
 			nonLeaf1.ShiftToLeft(nonLeafParent, nonLeafIndex, nonLeafLeftSibling)
-
-			if nonLeafChildIndex == 0 {
-				(*recordPath)[i].SetNonLeaf(nonLeafLeftSibling)
-				(*recordPath)[i].SetNodeChildIndex(len(nonLeafLeftSibling.Children()) - 1)
-				(*recordPath)[i-1].SetNodeChildIndex(nonLeafIndex - 1)
-			} else {
-				(*recordPath)[i].SetNodeChildIndex(nonLeafChildIndex - 1)
-			}
-
+			(*recordPath)[i].SetNodeChildIndex(nonLeafChildIndex - 1)
 			return i
 		}
 	}
