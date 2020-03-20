@@ -44,15 +44,15 @@ func (li *leafAccessor) IsLeaf() bool {
 }
 
 func (li *leafAccessor) NumberOfKeys() int {
-	return len(li.l.Records)
+	return len(li.l.Records())
 }
 
 func (li *leafAccessor) GetKey(keyIndex int) interface{} {
-	return li.l.Records[keyIndex].Key
+	return li.l.Records()[keyIndex].Key
 }
 
 func (li *leafAccessor) GetValue(keyIndex int) interface{} {
-	return li.l.Records[keyIndex].Value
+	return li.l.Records()[keyIndex].Value
 }
 
 func (li *leafAccessor) AccessChild(Walker, int) (_ error) { return }
@@ -68,15 +68,15 @@ func (nli *nonLeafAccessor) IsLeaf() bool {
 }
 
 func (nli *nonLeafAccessor) NumberOfKeys() int {
-	return len(nli.nl.Children) - 1
+	return len(nli.nl.Children()) - 1
 }
 
 func (nli *nonLeafAccessor) GetKey(keyIndex int) interface{} {
-	return nli.nl.Children[keyIndex+1].Key
+	return nli.nl.Children()[keyIndex+1].Key
 }
 
 func (nli *nonLeafAccessor) AccessChild(walker Walker, childIndex int) error {
-	child := nli.nl.Children[childIndex].Value
+	child := nli.nl.Children()[childIndex].Value
 	nli.bpt.doWalk(walker, child, nli.depth+1)
 	return nil
 }

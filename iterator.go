@@ -28,7 +28,7 @@ func (fi *forwardIterator) Advance() {
 		return
 	}
 
-	if fi.currentRecordIndex < len(fi.currentLeaf.Records)-1 {
+	if fi.currentRecordIndex < len(fi.currentLeaf.Records())-1 {
 		fi.currentRecordIndex++
 	} else {
 		fi.currentLeaf = fi.currentLeaf.Next
@@ -54,7 +54,7 @@ func (bi *backwardIterator) Advance() {
 		bi.currentRecordIndex--
 	} else {
 		bi.currentLeaf = bi.currentLeaf.Prev
-		bi.currentRecordIndex = len(bi.currentLeaf.Records) - 1
+		bi.currentRecordIndex = len(bi.currentLeaf.Records()) - 1
 	}
 }
 
@@ -71,7 +71,7 @@ func (i *iterator) Record() (interface{}, interface{}) {
 		panic(errors.New("bptree: end of iteration"))
 	}
 
-	record := i.currentLeaf.Records[i.currentRecordIndex]
+	record := i.currentLeaf.Records()[i.currentRecordIndex]
 	return record.Key, record.Value
 }
 

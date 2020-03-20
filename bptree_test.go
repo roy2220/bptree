@@ -221,8 +221,6 @@ func TestBPTreeSearch(t *testing.T) {
 			return int64(strings.Compare(key1.(string), key2.(string)))
 		})
 
-		b := bytes.NewBuffer(nil)
-
 		it := bpt.SearchForward(bptree.KeyMin, bptree.KeyMax)
 		assert.True(t, it.IsAtEnd())
 		it = bpt.SearchForward(bptree.KeyMax, bptree.KeyMin)
@@ -251,6 +249,8 @@ func TestBPTreeSearch(t *testing.T) {
 		bpt.AddRecord("ee", nil)
 		bpt.AddRecord("jj", nil)
 		bpt.AddRecord("gg", nil)
+
+		b := bytes.NewBuffer(nil)
 		bpt.Fprint(b)
 		t.Logf("\n%s", b.String())
 
@@ -262,10 +262,10 @@ func TestBPTreeSearch(t *testing.T) {
 			assert.True(t, it.IsAtEnd())
 		}
 
-		it = bpt.SearchForward("aaa", "c")
+		it = bpt.SearchForward("ddd", "f")
 		if assert.True(t, !it.IsAtEnd()) {
 			k, _ := it.Record()
-			assert.Equal(t, "bb", k)
+			assert.Equal(t, "ee", k)
 			it.Advance()
 			assert.True(t, it.IsAtEnd())
 		}
@@ -317,6 +317,9 @@ func MakeBPTree(t *testing.T, maxDegree int) *bptree.BPTree {
 			t.FailNow()
 		}
 
+		// b := bytes.NewBuffer(nil)
+		// bpt.Fprint(b)
+		// t.Logf("after add: %v\n%s", k, b.String())
 		j := rand.Intn(i*2 + 1)
 
 		if j <= i {
@@ -327,6 +330,9 @@ func MakeBPTree(t *testing.T, maxDegree int) *bptree.BPTree {
 					t.FailNow()
 				}
 
+				// b := bytes.NewBuffer(nil)
+				// bpt.Fprint(b)
+				// t.Logf("after del: %v\n%s", k, b.String())
 				deletedKeywordIndexes[j] = struct{}{}
 			}
 		}
@@ -339,6 +345,10 @@ func MakeBPTree(t *testing.T, maxDegree int) *bptree.BPTree {
 		if !assert.True(t, ok, "%v %v", j, k) {
 			t.FailNow()
 		}
+
+		// b := bytes.NewBuffer(nil)
+		// bpt.Fprint(b)
+		// t.Logf("after add: %v\n%s", k, b.String())
 	}
 
 	t.Logf("b+ tree height: %d", bpt.Height())
@@ -354,7 +364,7 @@ func TestMain(m *testing.M) {
 
 	Keywords = strings.Split(string(data), "\n")
 	Keywords = Keywords[:len(Keywords)-1]
-	// Keywords = Keywords[:100]
+	// Keywords = Keywords[:20]
 	SortedKeywordIndexes = make([]int, len(Keywords))
 
 	for i := range Keywords {

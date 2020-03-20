@@ -41,14 +41,14 @@ func (bpt *BPTree) Init(maxDegree int, keyComparer KeyComparer) *BPTree {
 
 // AddRecord adds the given record to the B+ tree.
 // If no record with an identical key exists in the B+ tree,
-// it adds the record then returns true, otherwise if returns
+// it adds the record then returns true, otherwise it returns
 // false and the present value of the record.
 func (bpt *BPTree) AddRecord(key, value interface{}) (interface{}, bool) {
 	recordPath, ok := bpt.findRecord(key)
 
 	if ok {
 		leaf, recordIndex := recordPath.LocateRecord()
-		return leaf.Records[recordIndex].Value, false
+		return leaf.Records()[recordIndex].Value, false
 	}
 
 	bpt.insertRecord(record{key, value}, recordPath)
@@ -59,11 +59,11 @@ func (bpt *BPTree) AddRecord(key, value interface{}) (interface{}, bool) {
 // key in the B+ tree to the given one.
 // If a record with an identical key exists in the B+ tree,
 // it updates the record then returns true and the replaced
-// value of the record, otherwise if returns flase.
+// value of the record, otherwise it returns flase.
 func (bpt *BPTree) UpdateRecord(key, value interface{}) (interface{}, bool) {
 	if recordPath, ok := bpt.findRecord(key); ok {
 		leaf, recordIndex := recordPath.LocateRecord()
-		leaf.Records[recordIndex].Value, value = value, leaf.Records[recordIndex].Value
+		leaf.Records()[recordIndex].Value, value = value, leaf.Records()[recordIndex].Value
 		return value, true
 	}
 
@@ -82,7 +82,7 @@ func (bpt *BPTree) AddOrUpdateRecord(key, value interface{}) (interface{}, bool)
 
 	if ok {
 		leaf, recordIndex := recordPath.LocateRecord()
-		leaf.Records[recordIndex].Value, value = value, leaf.Records[recordIndex].Value
+		leaf.Records()[recordIndex].Value, value = value, leaf.Records()[recordIndex].Value
 		return value, false
 	}
 
@@ -94,11 +94,11 @@ func (bpt *BPTree) AddOrUpdateRecord(key, value interface{}) (interface{}, bool)
 // B+ tree.
 // If a record with an identical key exists in the B+ tree,
 // it deletes the record then returns true and the removed
-// value of the record, otherwise if returns flase.
+// value of the record, otherwise it returns flase.
 func (bpt *BPTree) DeleteRecord(key interface{}) (interface{}, bool) {
 	if recordPath, ok := bpt.findRecord(key); ok {
 		leaf, recordIndex := recordPath.LocateRecord()
-		value := leaf.Records[recordIndex].Value
+		value := leaf.Records()[recordIndex].Value
 		bpt.removeRecord(recordPath)
 		return value, true
 	}
@@ -110,11 +110,11 @@ func (bpt *BPTree) DeleteRecord(key interface{}) (interface{}, bool) {
 // in the B+ tree.
 // If a record with an identical key exists in the B+ tree,
 // it returns true and the present value of the record,
-// otherwise if returns flase.
+// otherwise it returns flase.
 func (bpt *BPTree) HasRecord(key interface{}) (interface{}, bool) {
 	if recordPath, ok := bpt.findRecord(key); ok {
 		leaf, recordIndex := recordPath.LocateRecord()
-		return leaf.Records[recordIndex].Value, true
+		return leaf.Records()[recordIndex].Value, true
 	}
 
 	return nil, false
@@ -140,7 +140,7 @@ func (bpt *BPTree) SearchBackward(maxKey, minKey interface{}) Iterator {
 
 // IsEmpty indicates whether the B+ tree is empty.
 func (bpt *BPTree) IsEmpty() bool {
-	return bpt.height == 1 && len((*leaf)(bpt.root).Records) == 0
+	return bpt.height == 1 && len((*leaf)(bpt.root).Records()) == 0
 }
 
 // MaxDegree returns the maximum degree of the B+ tree.
@@ -160,192 +160,305 @@ func (bpt *BPTree) findRecord(key interface{}) (recordPath, bool) {
 	for {
 		if nodeDepth := len(recordPath) + 1; nodeDepth == bpt.height {
 			leaf := (*leaf)(node)
-			i, ok := leaf.Records.LocateRecord(key, bpt.keyComparer)
+			i, ok := leaf.LocateRecord(key, bpt.keyComparer)
 			recordPath.Append(node, i)
 			return recordPath, ok
 		}
 
 		nonLeaf := (*nonLeaf)(node)
-		i, ok := nonLeaf.Children.LocateNodeChild(key, bpt.keyComparer)
+		i, ok := nonLeaf.LocateChild(key, bpt.keyComparer)
 
 		if !ok {
 			i--
 		}
 
 		recordPath.Append(node, i)
-		node = nonLeaf.Children[i].Value
+		node = nonLeaf.Children()[i].Value
 	}
 }
 
 func (bpt *BPTree) insertRecord(record record, recordPath recordPath) {
-	for i := 0; ; i++ {
-		n := len(recordPath)
-
-		if i >= n {
-			break
-		}
-
-		if i == n-1 {
-			bpt.trySplitLeaf(&recordPath, &i)
-		} else {
-			bpt.trySplitNonLeaf(&recordPath, &i)
-		}
-	}
-
+	bpt.ensureNotFullLeaf(&recordPath)
 	leaf, recordIndex := recordPath.LocateRecord()
-	leaf.Records.InsertRecord(record, recordIndex)
-	trySyncKey(recordPath)
+	leaf.InsertRecord(record, recordIndex)
+	syncKey(recordPath)
 }
 
 func (bpt *BPTree) removeRecord(recordPath recordPath) {
-	for i := 1; ; i++ {
-		n := len(recordPath)
-
-		if i >= n {
-			break
-		}
-
-		if i == n-1 {
-			bpt.tryMergeLeaf(&recordPath, &i)
-		} else {
-			bpt.tryMergeNonLeaf(&recordPath, &i)
-		}
+	if len(recordPath) >= 2 {
+		bpt.ensureNotSparseLeaf(&recordPath)
 	}
 
 	leaf, recordIndex := recordPath.LocateRecord()
-	leaf.Records.RemoveRecord(recordIndex)
-	trySyncKey(recordPath)
+	leaf.RemoveRecord(recordIndex)
+	syncKey(recordPath)
 }
 
-func (bpt *BPTree) trySplitLeaf(recordPath *recordPath, i *int) {
-	leaf := (*recordPath)[*i].Leaf()
-	recordIndex := (*recordPath)[*i].RecordIndex()
+func (bpt *BPTree) ensureNotFullLeaf(recordPath *recordPath) {
+	i := len(*recordPath) - 1
+	leaf1 := (*recordPath)[i].Leaf()
 
-	if leaf.Records.IsFull(bpt.maxDegree) {
-		numberOfRecords := bpt.maxDegree / 2
+	if !leaf1.IsFull(bpt.maxDegree) {
+		return
+	}
 
-		if *i == 0 {
-			bpt.increaseHeight()
-			recordPath.Prepend(bpt.root, 0)
-			*i++
+	recordIndex := (*recordPath)[i].RecordIndex()
+	numberOfRecords := bpt.maxDegree / 2
+
+	if i == 0 {
+		bpt.increaseHeight()
+		recordPath.Prepend(bpt.root, 0)
+		i = 1
+	}
+
+	leafParent := (*recordPath)[i-1].NonLeaf()
+	leafIndex := (*recordPath)[i-1].NodeChildIndex()
+
+	if leafIndex < len(leafParent.Children())-1 {
+		leafRightSibling := (*leaf)(leafParent.Children()[leafIndex+1].Value)
+
+		if !leafRightSibling.IsFull(bpt.maxDegree) {
+			if recordIndex == len(leaf1.Records()) {
+				(*recordPath)[i].SetLeaf(leafRightSibling)
+				(*recordPath)[i].SetRecordIndex(0)
+				(*recordPath)[i-1].SetNodeChildIndex(leafIndex + 1)
+			} else {
+				leaf1.ShiftToRight(leafParent, leafIndex, leafRightSibling)
+			}
+
+			return
 		}
+	}
 
-		leafParent := (*recordPath)[*i-1].NonLeaf()
-		leafIndex := (*recordPath)[*i-1].NodeChildIndex()
-		leafSibling := leaf.Split(numberOfRecords, leafParent, leafIndex+1)
-		bpt.leafList.InsertLeafAfter(leafSibling, leaf)
+	if leafIndex >= 1 {
+		leafLeftSibling := (*leaf)(leafParent.Children()[leafIndex-1].Value)
 
-		if recordIndex >= numberOfRecords {
-			(*recordPath)[*i].SetLeaf(leafSibling)
-			(*recordPath)[*i].SetRecordIndex(recordIndex - numberOfRecords)
-			(*recordPath)[*i-1].SetNodeChildIndex(leafIndex + 1)
+		if !leafLeftSibling.IsFull(bpt.maxDegree) {
+			// if recordIndex == 0 {
+			//	(*recordPath)[i].SetLeaf(leafLeftSibling)
+			//	(*recordPath)[i].SetRecordIndex(len(leafLeftSibling.Records()))
+			//	(*recordPath)[i-1].SetNodeChildIndex(leafIndex - 1)
+			// } else {
+			leaf1.ShiftToLeft(leafParent, leafIndex, leafLeftSibling)
+			(*recordPath)[i].SetRecordIndex(recordIndex - 1)
+			// }
+
+			return
 		}
+	}
+
+	i = bpt.ensureNotFullNonLeaf(recordPath, i-1) + 1
+	leafParent = (*recordPath)[i-1].NonLeaf()
+	leafIndex = (*recordPath)[i-1].NodeChildIndex()
+	leafNewSibling := leaf1.Split(numberOfRecords, leafParent, leafIndex)
+	bpt.leafList.InsertLeafAfter(leafNewSibling, leaf1)
+
+	if recordIndex >= numberOfRecords {
+		(*recordPath)[i].SetLeaf(leafNewSibling)
+		(*recordPath)[i].SetRecordIndex(recordIndex - numberOfRecords)
+		(*recordPath)[i-1].SetNodeChildIndex(leafIndex + 1)
 	}
 }
 
-func (bpt *BPTree) trySplitNonLeaf(recordPath *recordPath, i *int) {
-	nonLeaf := (*recordPath)[*i].NonLeaf()
-	nonLeafChildIndex := (*recordPath)[*i].NodeChildIndex()
+func (bpt *BPTree) ensureNotFullNonLeaf(recordPath *recordPath, i int) int {
+	nonLeaf1 := (*recordPath)[i].NonLeaf()
 
-	if nonLeaf.Children.IsFull(bpt.maxDegree) {
-		numberOfNonLeafChildren := 1 + (bpt.maxDegree-1)/2
+	if !nonLeaf1.IsFull(bpt.maxDegree) {
+		return i
+	}
 
-		if *i == 0 {
-			bpt.increaseHeight()
-			recordPath.Prepend(bpt.root, 0)
-			*i++
+	nonLeafChildIndex := (*recordPath)[i].NodeChildIndex()
+	numberOfNonLeafChildren := 1 + (bpt.maxDegree-1)/2
+
+	if i == 0 {
+		bpt.increaseHeight()
+		recordPath.Prepend(bpt.root, 0)
+		i = 1
+	}
+
+	nonLeafParent := (*recordPath)[i-1].NonLeaf()
+	nonLeafIndex := (*recordPath)[i-1].NodeChildIndex()
+
+	if nonLeafIndex < len(nonLeafParent.Children())-1 {
+		nonLeafRightSibling := (*nonLeaf)(nonLeafParent.Children()[nonLeafIndex+1].Value)
+
+		if !nonLeafRightSibling.IsFull(bpt.maxDegree) {
+			nonLeaf1.ShiftToRight(nonLeafParent, nonLeafIndex, nonLeafRightSibling)
+
+			if nonLeafChildIndex == len(nonLeaf1.Children()) {
+				(*recordPath)[i].SetNonLeaf(nonLeafRightSibling)
+				(*recordPath)[i].SetNodeChildIndex(0)
+				(*recordPath)[i-1].SetNodeChildIndex(nonLeafIndex + 1)
+			}
+
+			return i
 		}
+	}
 
-		nonLeafParent := (*recordPath)[*i-1].NonLeaf()
-		nonLeafIndex := (*recordPath)[*i-1].NodeChildIndex()
-		nonLeafSibling := nonLeaf.Split(numberOfNonLeafChildren, nonLeafParent, nonLeafIndex+1)
+	if nonLeafIndex >= 1 {
+		nonLeafLeftSibling := (*nonLeaf)(nonLeafParent.Children()[nonLeafIndex-1].Value)
 
-		if nonLeafChildIndex >= numberOfNonLeafChildren {
-			(*recordPath)[*i].SetNonLeaf(nonLeafSibling)
-			(*recordPath)[*i].SetNodeChildIndex(nonLeafChildIndex - numberOfNonLeafChildren)
-			(*recordPath)[*i-1].SetNodeChildIndex(nonLeafIndex + 1)
+		if !nonLeafLeftSibling.IsFull(bpt.maxDegree) {
+			nonLeaf1.ShiftToLeft(nonLeafParent, nonLeafIndex, nonLeafLeftSibling)
+
+			if nonLeafChildIndex == 0 {
+				(*recordPath)[i].SetNonLeaf(nonLeafLeftSibling)
+				(*recordPath)[i].SetNodeChildIndex(len(nonLeafLeftSibling.Children()) - 1)
+				(*recordPath)[i-1].SetNodeChildIndex(nonLeafIndex - 1)
+			} else {
+				(*recordPath)[i].SetNodeChildIndex(nonLeafChildIndex - 1)
+			}
+
+			return i
 		}
+	}
+
+	i = bpt.ensureNotFullNonLeaf(recordPath, i-1) + 1
+	nonLeafParent = (*recordPath)[i-1].NonLeaf()
+	nonLeafIndex = (*recordPath)[i-1].NodeChildIndex()
+	nonLeafNewSibling := nonLeaf1.Split(numberOfNonLeafChildren, nonLeafParent, nonLeafIndex)
+
+	if nonLeafChildIndex >= numberOfNonLeafChildren {
+		(*recordPath)[i].SetNonLeaf(nonLeafNewSibling)
+		(*recordPath)[i].SetNodeChildIndex(nonLeafChildIndex - numberOfNonLeafChildren)
+		(*recordPath)[i-1].SetNodeChildIndex(nonLeafIndex + 1)
+	}
+
+	return i
+}
+
+func (bpt *BPTree) ensureNotSparseLeaf(recordPath *recordPath) {
+	i := len(*recordPath) - 1
+	leaf1 := (*recordPath)[i].Leaf()
+
+	if !leaf1.IsSparse(bpt.maxDegree) {
+		return
+	}
+
+	recordIndex := (*recordPath)[i].RecordIndex()
+	leafParent := (*recordPath)[i-1].NonLeaf()
+	leafIndex := (*recordPath)[i-1].NodeChildIndex()
+	var leafRightSibling *leaf
+
+	if leafIndex < len(leafParent.Children())-1 {
+		leafRightSibling = (*leaf)(leafParent.Children()[leafIndex+1].Value)
+
+		if !leafRightSibling.IsSparse(bpt.maxDegree) {
+			leaf1.UnshiftFromRight(leafParent, leafIndex, leafRightSibling)
+			return
+		}
+	} else {
+		leafRightSibling = nil
+	}
+
+	var leafLeftSibling *leaf
+
+	if leafIndex >= 1 {
+		leafLeftSibling = (*leaf)(leafParent.Children()[leafIndex-1].Value)
+
+		if !leafLeftSibling.IsSparse(bpt.maxDegree) {
+			leaf1.UnshiftFromLeft(leafParent, leafIndex, leafLeftSibling)
+			(*recordPath)[i].SetRecordIndex(recordIndex + 1)
+			return
+		}
+	} else {
+		leafLeftSibling = nil
+	}
+
+	if i >= 2 {
+		i = bpt.ensureNotSparseNonLeaf(recordPath, i-1) + 1
+		leafParent = (*recordPath)[i-1].NonLeaf()
+		leafIndex = (*recordPath)[i-1].NodeChildIndex()
+	}
+
+	if leafRightSibling != nil {
+		leaf1.MergeFromRight(leafParent, leafIndex, leafRightSibling)
+		bpt.leafList.RemoveLeaf(leafRightSibling)
+	} else {
+		numberOfRecords := len(leaf1.Records())
+		leaf1.MergeToLeft(leafParent, leafIndex, leafLeftSibling)
+		bpt.leafList.RemoveLeaf(leaf1)
+		(*recordPath)[i].SetLeaf(leafLeftSibling)
+		(*recordPath)[i].SetRecordIndex(len(leafLeftSibling.Records()) - (numberOfRecords - recordIndex))
+		(*recordPath)[i-1].SetNodeChildIndex(leafIndex - 1)
+	}
+
+	if i == 1 && len(leafParent.Children()) == 1 {
+		bpt.decreaseHeight()
+		recordPath.Unprepend()
 	}
 }
 
-func (bpt *BPTree) tryMergeLeaf(recordPath *recordPath, i *int) {
-	leaf1 := (*recordPath)[*i].Leaf()
-	recordIndex := (*recordPath)[*i].RecordIndex()
+func (bpt *BPTree) ensureNotSparseNonLeaf(recordPath *recordPath, i int) int {
+	nonLeaf1 := (*recordPath)[i].NonLeaf()
 
-	if leaf1.Records.IsSparse(bpt.maxDegree) {
-		leafParent := (*recordPath)[*i-1].NonLeaf()
-		leafIndex := (*recordPath)[*i-1].NodeChildIndex()
-
-		if leafIndex < len(leafParent.Children)-1 {
-			if (*leaf)(leafParent.Children[leafIndex+1].Value).Records.IsSparse(bpt.maxDegree) {
-				bpt.leafList.RemoveLeaf(leaf1.MergeRight(leafParent, leafIndex))
-			} else {
-				leaf1.StealRecordRight(leafParent, leafIndex)
-			}
-		} else {
-			if (*leaf)(leafParent.Children[leafIndex-1].Value).Records.IsSparse(bpt.maxDegree) {
-				numberOfRecords := len(leaf1.Records)
-				leafSibling := leaf1.MergeToLeft(leafParent, leafIndex)
-				bpt.leafList.RemoveLeaf(leaf1)
-				(*recordPath)[*i].SetLeaf(leafSibling)
-				(*recordPath)[*i].SetRecordIndex(len(leafSibling.Records) - (numberOfRecords - recordIndex))
-				(*recordPath)[*i-1].SetNodeChildIndex(leafIndex - 1)
-			} else {
-				leaf1.StealRecordLeft(leafParent, leafIndex)
-				(*recordPath)[*i].SetRecordIndex(recordIndex + 1)
-			}
-		}
-
-		if len(leafParent.Children) == 1 {
-			bpt.decreaseHeight()
-			recordPath.Unprepend()
-			*i--
-		}
+	if !nonLeaf1.IsSparse(bpt.maxDegree) {
+		return i
 	}
-}
 
-func (bpt *BPTree) tryMergeNonLeaf(recordPath *recordPath, i *int) {
-	nonLeaf1 := (*recordPath)[*i].NonLeaf()
-	nonLeafChildIndex := (*recordPath)[*i].NodeChildIndex()
+	nonLeafChildIndex := (*recordPath)[i].NodeChildIndex()
+	nonLeafParent := (*recordPath)[i-1].NonLeaf()
+	nonLeafIndex := (*recordPath)[i-1].NodeChildIndex()
+	var nonLeafRightSibling *nonLeaf
+	var nonLeafLeftSibling *nonLeaf
 
-	if nonLeaf1.Children.IsSparse(bpt.maxDegree) {
-		nonLeafParent := (*recordPath)[*i-1].NonLeaf()
-		nonLeafIndex := (*recordPath)[*i-1].NodeChildIndex()
+	if nonLeafIndex < len(nonLeafParent.Children())-1 {
+		nonLeafRightSibling = (*nonLeaf)(nonLeafParent.Children()[nonLeafIndex+1].Value)
 
-		if nonLeafIndex < len(nonLeafParent.Children)-1 {
-			if (*nonLeaf)(nonLeafParent.Children[nonLeafIndex+1].Value).Children.IsSparse(bpt.maxDegree) {
-				nonLeaf1.MergeRight(nonLeafParent, nonLeafIndex)
-			} else {
-				nonLeaf1.StealChildRight(nonLeafParent, nonLeafIndex)
-			}
-		} else {
-			if (*nonLeaf)(nonLeafParent.Children[nonLeafIndex-1].Value).Children.IsSparse(bpt.maxDegree) {
-				numberOfNonLeafChildren := len(nonLeaf1.Children)
-				nonLeafSibling := nonLeaf1.MergeToLeft(nonLeafParent, nonLeafIndex)
-				(*recordPath)[*i].SetNonLeaf(nonLeafSibling)
-				(*recordPath)[*i].SetNodeChildIndex(len(nonLeafSibling.Children) - (numberOfNonLeafChildren - nonLeafChildIndex))
-				(*recordPath)[*i-1].SetNodeChildIndex(nonLeafIndex - 1)
-			} else {
-				nonLeaf1.StealChildLeft(nonLeafParent, nonLeafIndex)
-				(*recordPath)[*i].SetNodeChildIndex(nonLeafChildIndex + 1)
-			}
+		if !nonLeafRightSibling.IsSparse(bpt.maxDegree) {
+			nonLeaf1.UnshiftFromRight(nonLeafParent, nonLeafIndex, nonLeafRightSibling)
+			return i
 		}
-
-		if len(nonLeafParent.Children) == 1 {
-			bpt.decreaseHeight()
-			recordPath.Unprepend()
-			*i--
-		}
+	} else {
+		nonLeafRightSibling = nil
 	}
+
+	if nonLeafIndex >= 1 {
+		nonLeafLeftSibling = (*nonLeaf)(nonLeafParent.Children()[nonLeafIndex-1].Value)
+
+		if !nonLeafLeftSibling.IsSparse(bpt.maxDegree) {
+			nonLeaf1.UnshiftFromLeft(nonLeafParent, nonLeafIndex, nonLeafLeftSibling)
+			(*recordPath)[i].SetNodeChildIndex(nonLeafChildIndex + 1)
+			return i
+		}
+	} else {
+		nonLeafLeftSibling = nil
+	}
+
+	if i >= 2 {
+		i = bpt.ensureNotSparseNonLeaf(recordPath, i-1) + 1
+		nonLeafParent = (*recordPath)[i-1].NonLeaf()
+		nonLeafIndex = (*recordPath)[i-1].NodeChildIndex()
+	}
+
+	if nonLeafRightSibling != nil {
+		nonLeaf1.MergeFromRight(nonLeafParent, nonLeafIndex, nonLeafRightSibling)
+	} else {
+		numberOfNonLeafChildren := len(nonLeaf1.Children())
+		nonLeaf1.MergeToLeft(nonLeafParent, nonLeafIndex, nonLeafLeftSibling)
+		(*recordPath)[i].SetNonLeaf(nonLeafLeftSibling)
+		(*recordPath)[i].SetNodeChildIndex(len(nonLeafLeftSibling.Children()) - (numberOfNonLeafChildren - nonLeafChildIndex))
+		(*recordPath)[i-1].SetNodeChildIndex(nonLeafIndex - 1)
+	}
+
+	if i == 1 && len(nonLeafParent.Children()) == 1 {
+		bpt.decreaseHeight()
+		recordPath.Unprepend()
+		return 0
+	}
+
+	return i
 }
 
 func (bpt *BPTree) increaseHeight() {
-	bpt.root = unsafe.Pointer(&nonLeaf{Children: []nodeChild{{nil, bpt.root}}})
+	root := nonLeaf{}
+	root.InsertChild(nodeChild{nil, bpt.root}, 0)
+	bpt.root = unsafe.Pointer(&root)
 	bpt.height++
 }
 
 func (bpt *BPTree) decreaseHeight() {
-	bpt.root = (*nonLeaf)(bpt.root).Children[0].Value
+	bpt.root = (*nonLeaf)(bpt.root).Children()[0].Value
 	bpt.height--
 }
 
@@ -372,7 +485,7 @@ func (bpt *BPTree) findAndLocateRecords(minKey interface{}, maxKey interface{}) 
 	minLeaf, minRecordIndex := recordPath.LocateRecord(minRecordPath)
 
 	if !ok3 {
-		if minRecordIndex == len(minLeaf.Records) {
+		if minRecordIndex == len(minLeaf.Records()) {
 			if minLeaf == bpt.leafList.Tail() {
 				return nil, 0, nil, 0, false
 			}
@@ -387,7 +500,7 @@ func (bpt *BPTree) findAndLocateRecords(minKey interface{}, maxKey interface{}) 
 	}
 
 	if ok1 || !ok3 {
-		minKey = minLeaf.Records[minRecordIndex].Key
+		minKey = minLeaf.Records()[minRecordIndex].Key
 
 		if !ok2 {
 			d = bpt.keyComparer(minKey, maxKey)
@@ -412,14 +525,14 @@ func (bpt *BPTree) findAndLocateRecords(minKey interface{}, maxKey interface{}) 
 		//	}
 
 		//	maxLeaf = maxLeaf.Prev
-		//	maxRecordIndex = len(maxLeaf.Records) - 1
+		//	maxRecordIndex = len(maxLeaf.Records()) - 1
 		// } else {
 		maxRecordIndex--
 		// }
 	}
 
 	if ok2 || !ok4 {
-		maxKey = maxLeaf.Records[maxRecordIndex].Key
+		maxKey = maxLeaf.Records()[maxRecordIndex].Key
 		d = bpt.keyComparer(minKey, maxKey)
 
 		if d == 0 {
@@ -443,50 +556,55 @@ type KeyComparer func(key1, key2 interface{}) (delta int64)
 type keyMinMax int
 
 type leaf struct {
-	Records records
-	Prev    *leaf
-	Next    *leaf
+	records
+
+	Prev *leaf
+	Next *leaf
 }
 
 func (l *leaf) Split(numberOfRecords int, parent *nonLeaf, index int) *leaf {
-	sibling := leaf{
-		Records: make([]record, len(l.Records)-numberOfRecords),
+	newSibling := leaf{
+		records: make([]record, len(l.records)-numberOfRecords),
 	}
 
-	copy(sibling.Records, l.Records[numberOfRecords:])
-	l.Records.Truncate(numberOfRecords)
-	parent.Children.InsertNodeChild(nodeChild{sibling.Records[0].Key, unsafe.Pointer(&sibling)}, index)
-	return &sibling
+	copy(newSibling.records, l.records[numberOfRecords:])
+	l.Truncate(numberOfRecords)
+	parent.InsertChild(nodeChild{newSibling.records[0].Key, unsafe.Pointer(&newSibling)}, index+1)
+	return &newSibling
 }
 
-func (l *leaf) MergeToLeft(parent *nonLeaf, index int) *leaf {
-	sibling := (*leaf)(parent.Children[index-1].Value)
-	parent.Children.RemoveNodeChild(index)
-	sibling.Records = append(sibling.Records, l.Records...)
-	l.Records.Truncate(0)
-	return sibling
+func (l *leaf) MergeToLeft(parent *nonLeaf, index int, leftSibling *leaf) {
+	leftSibling.MergeFromRight(parent, index-1, l)
 }
 
-func (l *leaf) MergeRight(parent *nonLeaf, index int) *leaf {
-	sibling := (*leaf)(parent.Children[index+1].Value)
-	parent.Children.RemoveNodeChild(index + 1)
-	l.Records = append(l.Records, sibling.Records...)
-	sibling.Records.Truncate(0)
-	return sibling
+func (l *leaf) MergeFromRight(parent *nonLeaf, index int, rightSibling *leaf) {
+	parent.RemoveChild(index + 1)
+	l.records = append(l.records, rightSibling.records...)
+	rightSibling.Truncate(0)
 }
 
-func (l *leaf) StealRecordLeft(parent *nonLeaf, index int) {
-	sibling := (*leaf)(parent.Children[index-1].Value)
-	record := sibling.Records.RemoveRecord(len(sibling.Records) - 1)
-	l.Records.InsertRecord(record, 0)
-	parent.Children[index].Key = record.Key
+func (l *leaf) UnshiftFromLeft(parent *nonLeaf, index int, leftSibling *leaf) {
+	leftSibling.ShiftToRight(parent, index-1, l)
 }
 
-func (l *leaf) StealRecordRight(parent *nonLeaf, index int) {
-	sibling := (*leaf)(parent.Children[index+1].Value)
-	record := sibling.Records.RemoveRecord(0)
-	parent.Children[index+1].Key = sibling.Records[0].Key
-	l.Records.InsertRecord(record, len(l.Records))
+func (l *leaf) UnshiftFromRight(parent *nonLeaf, index int, rightSibling *leaf) {
+	rightSibling.ShiftToLeft(parent, index+1, l)
+}
+
+func (l *leaf) ShiftToLeft(parent *nonLeaf, index int, leftSibling *leaf) {
+	record := l.RemoveRecord(0)
+	parent.Children()[index].Key = l.records[0].Key
+	leftSibling.InsertRecord(record, len(leftSibling.records))
+}
+
+func (l *leaf) ShiftToRight(parent *nonLeaf, index int, rightSibling *leaf) {
+	record := l.RemoveRecord(len(l.records) - 1)
+	rightSibling.InsertRecord(record, 0)
+	parent.Children()[index+1].Key = record.Key
+}
+
+func (l *leaf) Records() []record {
+	return l.records
 }
 
 type records []record
@@ -575,61 +693,64 @@ type record struct {
 }
 
 type nonLeaf struct {
-	Children nodeChildren
+	nodeChildren
 }
 
 func (nl *nonLeaf) Split(numberOfChildren int, parent *nonLeaf, index int) *nonLeaf {
-	sibling := nonLeaf{
-		Children: make([]nodeChild, len(nl.Children)-numberOfChildren),
+	newSibling := nonLeaf{
+		nodeChildren: make([]nodeChild, len(nl.nodeChildren)-numberOfChildren),
 	}
 
-	copy(sibling.Children, nl.Children[numberOfChildren:])
-	key := sibling.Children[0].Key
-	sibling.Children[0].Key = nil
-	nl.Children.Truncate(numberOfChildren)
-	parent.Children.InsertNodeChild(nodeChild{key, unsafe.Pointer(&sibling)}, index)
-	return &sibling
+	copy(newSibling.nodeChildren, nl.nodeChildren[numberOfChildren:])
+	key := newSibling.nodeChildren[0].Key
+	newSibling.nodeChildren[0].Key = nil
+	nl.Truncate(numberOfChildren)
+	parent.InsertChild(nodeChild{key, unsafe.Pointer(&newSibling)}, index+1)
+	return &newSibling
 }
 
-func (nl *nonLeaf) MergeToLeft(parent *nonLeaf, index int) *nonLeaf {
-	sibling := (*nonLeaf)(parent.Children[index-1].Value)
-	nl.Children[0].Key = parent.Children[index].Key
-	parent.Children.RemoveNodeChild(index)
-	sibling.Children = append(sibling.Children, nl.Children...)
-	nl.Children.Truncate(0)
-	return sibling
+func (nl *nonLeaf) MergeToLeft(parent *nonLeaf, index int, leftSibling *nonLeaf) {
+	leftSibling.MergeFromRight(parent, index-1, nl)
 }
 
-func (nl *nonLeaf) MergeRight(parent *nonLeaf, index int) *nonLeaf {
-	sibling := (*nonLeaf)(parent.Children[index+1].Value)
-	sibling.Children[0].Key = parent.Children[index+1].Key
-	parent.Children.RemoveNodeChild(index + 1)
-	nl.Children = append(nl.Children, sibling.Children...)
-	sibling.Children.Truncate(0)
-	return sibling
+func (nl *nonLeaf) MergeFromRight(parent *nonLeaf, index int, rightSibling *nonLeaf) {
+	rightSibling.nodeChildren[0].Key = parent.nodeChildren[index+1].Key
+	parent.RemoveChild(index + 1)
+	nl.nodeChildren = append(nl.nodeChildren, rightSibling.nodeChildren...)
+	rightSibling.Truncate(0)
 }
 
-func (nl *nonLeaf) StealChildLeft(parent *nonLeaf, index int) {
-	sibling := (*nonLeaf)(parent.Children[index-1].Value)
-	child := sibling.Children.RemoveNodeChild(len(sibling.Children) - 1)
-	nl.Children[0].Key = parent.Children[index].Key
-	parent.Children[index].Key = child.Key
+func (nl *nonLeaf) UnshiftFromLeft(parent *nonLeaf, index int, leftSibling *nonLeaf) {
+	leftSibling.ShiftToRight(parent, index-1, nl)
+}
+
+func (nl *nonLeaf) UnshiftFromRight(parent *nonLeaf, index int, rightSibling *nonLeaf) {
+	rightSibling.ShiftToLeft(parent, index+1, nl)
+}
+
+func (nl *nonLeaf) ShiftToLeft(parent *nonLeaf, index int, leftSibling *nonLeaf) {
+	child := nl.RemoveChild(0)
+	child.Key = parent.nodeChildren[index].Key
+	parent.nodeChildren[index].Key = nl.nodeChildren[0].Key
+	nl.nodeChildren[0].Key = nil
+	leftSibling.InsertChild(child, len(leftSibling.nodeChildren))
+}
+
+func (nl *nonLeaf) ShiftToRight(parent *nonLeaf, index int, rightSibling *nonLeaf) {
+	child := nl.RemoveChild(len(nl.nodeChildren) - 1)
+	rightSibling.nodeChildren[0].Key = parent.nodeChildren[index+1].Key
+	parent.nodeChildren[index+1].Key = child.Key
 	child.Key = nil
-	nl.Children.InsertNodeChild(child, 0)
+	rightSibling.InsertChild(child, 0)
 }
 
-func (nl *nonLeaf) StealChildRight(parent *nonLeaf, index int) {
-	sibling := (*nonLeaf)(parent.Children[index+1].Value)
-	child := sibling.Children.RemoveNodeChild(0)
-	child.Key = parent.Children[index+1].Key
-	parent.Children[index+1].Key = sibling.Children[0].Key
-	sibling.Children[0].Key = nil
-	nl.Children.InsertNodeChild(child, len(nl.Children))
+func (nl *nonLeaf) Children() []nodeChild {
+	return nl.nodeChildren
 }
 
 type nodeChildren []nodeChild
 
-func (nc nodeChildren) LocateNodeChild(key interface{}, keyComparer KeyComparer) (int, bool) {
+func (nc nodeChildren) LocateChild(key interface{}, keyComparer KeyComparer) (int, bool) {
 	n := len(nc)
 
 	if x, ok := key.(keyMinMax); ok {
@@ -673,13 +794,13 @@ func (nc nodeChildren) LocateNodeChild(key interface{}, keyComparer KeyComparer)
 	return i, false
 }
 
-func (nc *nodeChildren) InsertNodeChild(nodeChild1 nodeChild, nodeChildIndex int) {
+func (nc *nodeChildren) InsertChild(nodeChild1 nodeChild, nodeChildIndex int) {
 	*nc = append(*nc, nodeChild{})
 	copy((*nc)[nodeChildIndex+1:], (*nc)[nodeChildIndex:])
 	(*nc)[nodeChildIndex] = nodeChild1
 }
 
-func (nc *nodeChildren) RemoveNodeChild(nodeChildIndex int) nodeChild {
+func (nc *nodeChildren) RemoveChild(nodeChildIndex int) nodeChild {
 	nodeChild1 := (*nc)[nodeChildIndex]
 	copy((*nc)[nodeChildIndex:], (*nc)[nodeChildIndex+1:])
 	(*nc)[len(*nc)-1] = nodeChild{}
@@ -708,13 +829,13 @@ type nodeChild struct {
 	Value unsafe.Pointer
 }
 
-func trySyncKey(recordPath recordPath) {
-	if leaf, recordIndex := recordPath.LocateRecord(); recordIndex == 0 && len(leaf.Records) >= 1 {
+func syncKey(recordPath recordPath) {
+	if leaf, recordIndex := recordPath.LocateRecord(); recordIndex == 0 && len(leaf.Records()) >= 1 {
 		for i := len(recordPath) - 2; i >= 0; i-- {
 			if recordPath[i].NodeChildIndex() >= 1 {
 				nonLeaf := recordPath[i].NonLeaf()
 				nonLeafChildIndex := recordPath[i].NodeChildIndex()
-				nonLeaf.Children[nonLeafChildIndex].Key = leaf.Records[0].Key
+				nonLeaf.Children()[nonLeafChildIndex].Key = leaf.Records()[0].Key
 				return
 			}
 		}
